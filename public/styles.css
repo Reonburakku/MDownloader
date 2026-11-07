@@ -5,8 +5,8 @@
   --line: #2a2f3a;
   --text: #e6e8ec;
   --muted: #9aa1ad;
-  --accent: #22c55e;
-  --accent-ink: #052e14;
+  --accent: #5ce8c7;
+  --accent-ink: #03241d;
   --danger: #f87171;
   --warn: #fbbf24;
   --radius: 12px;
@@ -15,7 +15,7 @@
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #f4f5f7; --panel: #ffffff; --panel-2: #f0f2f5; --line: #dfe3e8;
-    --text: #15181d; --muted: #5f6672; --accent: #16a34a; --accent-ink: #ffffff;
+    --text: #15181d; --muted: #5f6672; --accent: #0d8a76; --accent-ink: #ffffff;
     color-scheme: light;
   }
 }
