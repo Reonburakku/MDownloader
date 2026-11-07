@@ -6,7 +6,7 @@ const { join } = require('node:path');
 
 const draw = `(() => {
   const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, S, S); grad.addColorStop(0, '#34d399'); grad.addColorStop(1, '#15803d');
+  const grad = g.createLinearGradient(0, 0, S, S); grad.addColorStop(0, '#6af0d0'); grad.addColorStop(1, '#0d8a76');
   g.fillStyle = grad; g.beginPath(); g.roundRect(16, 16, S - 32, S - 32, 110); g.fill();
   g.fillStyle = '#ffffff';
   g.beginPath(); g.ellipse(200, 350, 62, 48, -0.35, 0, Math.PI * 2); g.fill();
