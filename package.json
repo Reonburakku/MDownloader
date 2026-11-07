@@ -1,7 +1,7 @@
 {
   "name": "mdownloader",
   "productName": "MDownloader",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Descarga canciones desde YouTube a partir de playlists de Spotify, nombre/artista o links de YouTube",
   "author": "Manuel Méndez",
   "type": "module",
