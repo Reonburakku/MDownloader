@@ -58,6 +58,14 @@ function setFolder(dir) {
   renderFormatOptions();
 })();
 
+// La barra de descarga es fija: se reserva su alto real debajo de la lista para que no tape canciones.
+function syncBarSpace() {
+  const bar = $('#downloadBar');
+  document.body.style.paddingBottom = bar.hidden ? '' : `${bar.offsetHeight + 24}px`;
+}
+new ResizeObserver(syncBarSpace).observe($('#downloadBar'));
+window.addEventListener('resize', syncBarSpace);
+
 // ---------- Ajustes ----------
 const dlg = $('#settings');
 
@@ -172,6 +180,7 @@ function renderRow(it) {
     $('#list').append(it.el);
     $('.sel', it.el).addEventListener('change', (e) => { it.checked = e.target.checked; updateCounts(); });
     $('.cand', it.el).addEventListener('change', (e) => { it.sel = Number(e.target.value); renderRow(it); });
+    bindClip(it);
   }
   const el = it.el;
   const c = it.candidates?.[it.sel];
@@ -197,9 +206,13 @@ function renderRow(it) {
   a.hidden = !c;
   if (c) a.href = c.url;
 
+  renderClip(it);
+
   const labels = {
     searching: 'Buscando…', ready: '', notfound: 'No encontrada', queued: 'En cola',
-    downloading: `${Math.round(it.percent || 0)}%${it.speed ? ' · ' + it.speed : ''}`,
+    downloading: it.clipActive && !it.percent
+      ? 'Descargando fragmento…'
+      : `${Math.round(it.percent || 0)}%${it.speed ? ' · ' + it.speed : ''}`,
     converting: 'Convirtiendo…', done: '✓ Descargada', error: it.error || 'Error',
   };
   $('.st', el).textContent = labels[it.status] ?? '';
@@ -210,6 +223,127 @@ function renderRow(it) {
   el.classList.toggle('error', it.status === 'error' || it.status === 'notfound');
 }
 
+// ---------- Fragmento (desde / hasta) ----------
+const BUSY = ['queued', 'downloading', 'converting'];
+
+/** "1:45" → 105, "1:02:03" → 3723, "90" → 90, "" → null, inválido → NaN */
+function parseTime(str) {
+  const s = String(str).trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s));
+  if (!/^\d+(:[0-5]?\d){1,2}$/.test(s)) return NaN;
+  return s.split(':').reduce((acc, p) => acc * 60 + Number(p), 0);
+}
+
+const fmtTime = (sec) => {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.round(sec % 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+};
+
+/** Fragmento del video elegido. Por defecto, de 0:00 al final; se reinicia si se cambia de video. */
+function getClip(it) {
+  const c = it.candidates?.[it.sel];
+  if (!it.clip || it.clip.sel !== it.sel) it.clip = { sel: it.sel, start: 0, end: c?.duration ?? null };
+  return it.clip;
+}
+
+/** Devuelve { start, end } para enviar al servidor, solo si no es la canción completa. */
+function clipToSend(it) {
+  const c = it.candidates[it.sel];
+  const { start, end } = getClip(it);
+  const fullEnd = end == null || (c.duration != null && end >= c.duration);
+  return { start: start > 0 ? start : undefined, end: fullEnd ? undefined : end };
+}
+
+function bindClip(it) {
+  const el = it.el;
+  const [cs, ce, r1, r2] = ['.cs', '.ce', '.r1', '.r2'].map((s) => $(s, el));
+
+  const set = (start, end) => {
+    const d = it.candidates?.[it.sel]?.duration ?? null;
+    const clip = getClip(it);
+    clip.start = Math.max(0, Math.min(start, d != null ? d - 1 : start));
+    clip.end = end == null ? null : Math.max(clip.start + 1, d != null ? Math.min(end, d) : end);
+    renderClip(it);
+  };
+
+  // Deslizadores: cada manija no puede cruzar a la otra
+  r1.addEventListener('input', () => {
+    const v = Math.min(Number(r1.value), Number(r2.value) - 1);
+    r1.value = v;
+    set(v, getClip(it).end);
+  });
+  r2.addEventListener('input', () => {
+    const v = Math.max(Number(r2.value), Number(r1.value) + 1);
+    r2.value = v;
+    set(getClip(it).start, v);
+  });
+
+  // Cajas de texto: se aplican al salir del campo o con Enter
+  const commit = (input, which) => {
+    const v = parseTime(input.value);
+    const clip = getClip(it);
+    const d = it.candidates?.[it.sel]?.duration ?? null;
+    const bad = Number.isNaN(v)
+      || (which === 'start' && v != null && ((clip.end ?? Infinity) <= v || (d != null && v >= d)))
+      || (which === 'end' && v != null && v <= clip.start);
+    input.classList.toggle('invalid', bad);
+    if (bad) {
+      input.title = which === 'start' ? 'El inicio debe ser menor que el final' : 'El final debe ser mayor que el inicio';
+      return;
+    }
+    input.title = which === 'start' ? 'Desde (m:ss)' : 'Hasta (m:ss)';
+    if (which === 'start') set(v ?? 0, clip.end);
+    else set(clip.start, v ?? d); // vacío = hasta el final
+    // Muestra el valor ya normalizado ("45" → "0:45", "20:00" → duración real)
+    const val = which === 'start' ? getClip(it).start : getClip(it).end;
+    input.value = val == null ? '' : fmtTime(val);
+  };
+  for (const [input, which] of [[cs, 'start'], [ce, 'end']]) {
+    input.addEventListener('change', () => commit(input, which));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(input, which); input.blur(); } });
+  }
+
+  $('.clip-reset', el).addEventListener('click', () => {
+    it.clip = null;
+    [cs, ce].forEach((i) => i.classList.remove('invalid'));
+    renderClip(it);
+  });
+}
+
+function renderClip(it) {
+  const el = it.el;
+  const box = $('.clip', el);
+  const c = it.candidates?.[it.sel];
+  box.classList.toggle('hidden-clip', !c);
+  if (!c) return;
+
+  const d = c.duration ?? null;
+  const clip = getClip(it);
+  const [cs, ce, r1, r2] = ['.cs', '.ce', '.r1', '.r2'].map((s) => $(s, el));
+
+  // No pisar lo que el usuario está escribiendo
+  if (document.activeElement !== cs && !cs.classList.contains('invalid')) cs.value = fmtTime(clip.start);
+  if (document.activeElement !== ce && !ce.classList.contains('invalid')) ce.value = clip.end == null ? '' : fmtTime(clip.end);
+
+  box.classList.toggle('no-duration', d == null);
+  if (d != null) {
+    for (const r of [r1, r2]) r.max = d;
+    r1.value = clip.start;
+    r2.value = clip.end ?? d;
+    const range = $('.range', el);
+    range.style.setProperty('--a', `${(clip.start / d) * 100}%`);
+    range.style.setProperty('--b', `${((clip.end ?? d) / d) * 100}%`);
+    // Si las manijas se juntan al final, la de inicio debe quedar encima para poder moverla
+    r1.style.zIndex = clip.start > d * 0.9 ? 2 : 1;
+  }
+
+  const trimmed = clip.start > 0 || (clip.end != null && (d == null || clip.end < d));
+  box.classList.toggle('trimmed', trimmed);
+  const busy = BUSY.includes(it.status);
+  for (const i of [cs, ce, r1, r2, $('.clip-reset', el)]) i.disabled = busy;
+}
+
 function selectedItems() {
   return state.items.filter((it) => it.checked && it.candidates?.[it.sel]);
 }
@@ -218,6 +352,7 @@ function updateCounts() {
   const n = state.items.length;
   $('#listCard').hidden = n === 0;
   $('#downloadBar').hidden = n === 0;
+  syncBarSpace();
   const sel = selectedItems().length;
   $('#countLabel').textContent = `${sel} de ${n} seleccionada(s)`;
   $('#checkAll').checked = sel > 0 && sel === state.items.filter((it) => it.candidates?.length).length;
@@ -281,11 +416,14 @@ $('#downloadBtn').addEventListener('click', async () => {
         url: it.candidates[it.sel].url,
         // Para Spotify / búsqueda usamos "Artista - Título"; para links de YouTube, el título del video
         name: it.query ? (it.artist ? `${it.artist} - ${it.title}` : it.title) : null,
+        ...clipToSend(it),
       })),
     });
     for (const { key, jobId } of r.jobs) {
       const it = state.items.find((x) => x.key === key);
-      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, checked: false });
+      const clip = clipToSend(it);
+      const clipActive = clip.start != null || clip.end != null;
+      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, checked: false, clipActive });
       renderRow(it);
     }
     updateCounts();

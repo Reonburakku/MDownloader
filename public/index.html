@@ -110,6 +110,16 @@
           <select class="cand"></select>
           <a class="yt" target="_blank" rel="noopener" title="Ver en YouTube">↗</a>
         </div>
+        <div class="clip" title="Fragmento a descargar">
+          <span class="clip-ico" aria-hidden="true">✂</span>
+          <input class="cs" inputmode="numeric" aria-label="Descargar desde (m:ss)" title="Desde (m:ss)">
+          <div class="range">
+            <input type="range" class="r1" min="0" step="1" aria-label="Inicio del fragmento">
+            <input type="range" class="r2" min="0" step="1" aria-label="Final del fragmento">
+          </div>
+          <input class="ce" inputmode="numeric" placeholder="fin" aria-label="Descargar hasta (m:ss)" title="Hasta (m:ss)">
+          <button type="button" class="clip-reset" title="Canción completa" aria-label="Volver a la canción completa">↺</button>
+        </div>
       </div>
       <div class="status"><div class="bar"><i></i></div><span class="st"></span></div>
     </li>
