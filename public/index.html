@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MDownloader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%2322c55e' d='M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z'/></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1><span class="logo">♪</span> MDownloader</h1>
+    <div class="head-actions">
+      <button id="openFolder" class="ghost" title="Abrir carpeta de descargas">📂 <span id="folderPath">Carpeta</span></button>
+      <button id="openSettings" class="ghost" title="Ajustes" aria-label="Ajustes">⚙️</button>
+    </div>
+  </header>
+
+  <dialog id="settings">
+    <form method="dialog" id="settingsForm">
+      <h2>Ajustes</h2>
+
+      <label class="field">
+        <span>Carpeta de descargas</span>
+        <div class="inline">
+          <input name="downloadDir" required>
+          <button type="button" id="pickFolder" class="ghost">Elegir…</button>
+        </div>
+      </label>
+
+      <fieldset>
+        <legend>Spotify (opcional)</legend>
+        <p class="hint">Solo hace falta para playlists de más de 100 canciones. Crea una app gratis en
+          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">developer.spotify.com</a>
+          y copia aquí sus credenciales.</p>
+        <input name="spotifyClientId" placeholder="Client ID">
+        <input name="spotifyClientSecret" type="password" placeholder="Client Secret">
+      </fieldset>
+
+      <fieldset>
+        <legend>Motor de descargas</legend>
+        <p class="hint">Si YouTube cambia algo y las descargas empiezan a fallar, actualiza yt-dlp.</p>
+        <div class="inline">
+          <span>yt-dlp <strong id="ytdlpVersion">—</strong></span>
+          <button type="button" id="updateYtdlp" class="ghost">Buscar actualización</button>
+        </div>
+        <p id="updateMsg" class="hint"></p>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button value="cancel" formnovalidate class="ghost">Cancelar</button>
+        <button value="save" class="primary">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <main>
+    <section class="card">
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-mode="spotify">Playlist de Spotify</button>
+        <button role="tab" class="tab" data-mode="song">Canción y artista</button>
+        <button role="tab" class="tab" data-mode="youtube">Link de YouTube</button>
+      </div>
+
+      <form id="inputForm" autocomplete="off">
+        <div class="mode" data-mode="spotify">
+          <input name="spotify" type="url" placeholder="https://open.spotify.com/playlist/…  (también álbumes o canciones)">
+        </div>
+        <div class="mode hidden" data-mode="song">
+          <input name="title" placeholder="Nombre de la canción">
+          <input name="artist" placeholder="Artista (opcional, mejora la búsqueda)">
+        </div>
+        <div class="mode hidden" data-mode="youtube">
+          <input name="youtube" type="url" placeholder="https://www.youtube.com/watch?v=…  (también playlists)">
+        </div>
+        <button type="submit" id="addBtn" class="primary">Buscar y agregar</button>
+      </form>
+      <p id="message" class="message" hidden></p>
+    </section>
+
+    <section class="card" id="listCard" hidden>
+      <div class="list-head">
+        <label class="check"><input type="checkbox" id="checkAll" checked> <span id="countLabel">0 canciones</span></label>
+        <button id="clearBtn" class="ghost small">Limpiar lista</button>
+      </div>
+      <ul id="list"></ul>
+    </section>
+  </main>
+
+  <footer id="downloadBar" hidden>
+    <div class="opts">
+      <div class="seg" id="kindSeg">
+        <button data-kind="audio" class="active">🎵 Audio</button>
+        <button data-kind="video">🎬 Video</button>
+      </div>
+      <label>Formato <select id="format"></select></label>
+      <label>Calidad <select id="quality"></select></label>
+      <span id="formatNote" class="note"></span>
+    </div>
+    <button id="downloadBtn" class="primary big">Descargar</button>
+  </footer>
+
+  <template id="rowTpl">
+    <li class="row">
+      <input type="checkbox" class="sel" checked>
+      <img class="thumb" alt="">
+      <div class="info">
+        <div class="src"><strong class="t"></strong> <span class="a"></span></div>
+        <div class="match">
+          <select class="cand"></select>
+          <a class="yt" target="_blank" rel="noopener" title="Ver en YouTube">↗</a>
+        </div>
+      </div>
+      <div class="status"><div class="bar"><i></i></div><span class="st"></span></div>
+    </li>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
