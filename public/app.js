@@ -141,12 +141,18 @@ $('#inputForm').addEventListener('submit', async (e) => {
   showMessage(state.mode === 'spotify' ? 'Leyendo la lista de Spotify…' : 'Consultando…');
   try {
     const r = await api('/api/resolve', body);
-    const newItems = r.items.map((it) => ({ ...it, sel: 0, checked: true, status: it.candidates ? 'ready' : 'searching' }));
+    const newItems = r.items.map((it) => {
+      const item = { ...it, sel: 0, checked: !it.existing, status: it.candidates ? 'ready' : 'searching' };
+      // Ya estaba en la carpeta: se muestra como descargada y no se marca para descargar
+      if (it.existing && it.candidates) markAlreadyDownloaded(item);
+      return item;
+    });
     state.items.push(...newItems);
     newItems.forEach(renderRow);
     updateCounts();
     const dupes = r.removed ? ` Se omitieron ${r.removed} repetida(s).` : '';
-    showMessage(r.warning || `Agregadas ${newItems.length} canción(es) de "${r.name}".${dupes}`, r.warning ? 'warn' : '');
+    const had = r.existing ? ` ${r.existing} ya estaba(n) descargada(s) y se desmarcaron.` : '';
+    showMessage(r.warning || `Agregadas ${newItems.length} canción(es) de "${r.name}".${dupes}${had}`, r.warning ? 'warn' : '');
     e.target.reset();
     // Busca en YouTube las que vienen de Spotify / nombre+artista
     const toSearch = newItems.filter((it) => !it.candidates);
@@ -165,6 +171,7 @@ async function searchItem(it) {
     it.candidates = r.candidates;
     it.status = r.candidates.length ? 'ready' : 'notfound';
     if (!r.candidates.length) it.checked = false;
+    else if (it.existing) markAlreadyDownloaded(it);
   } catch (err) {
     it.status = 'error';
     it.error = err.message;
@@ -172,6 +179,11 @@ async function searchItem(it) {
   }
   renderRow(it);
   updateCounts();
+}
+
+/** Canción encontrada en la carpeta de descargas al cargar la lista. */
+function markAlreadyDownloaded(it) {
+  Object.assign(it, { status: 'done', file: it.existing, dlSel: it.sel, checked: false, alreadyHad: true });
 }
 
 // ---------- Lista ----------
@@ -215,7 +227,7 @@ function renderRow(it) {
     downloading: it.clipActive && !it.percent
       ? 'Descargando fragmento…'
       : `${Math.round(it.percent || 0)}%${it.speed ? ' · ' + it.speed : ''}`,
-    converting: 'Convirtiendo…', done: '✓ Descargada', error: it.error || 'Error',
+    converting: 'Convirtiendo…', done: it.alreadyHad ? '✓ Ya descargada' : '✓ Descargada', error: it.error || 'Error',
   };
   $('.st', el).textContent = labels[it.status] ?? '';
   $('.st', el).title = it.status === 'error' ? it.error || '' : it.file || '';
@@ -494,7 +506,7 @@ $('#downloadBtn').addEventListener('click', async () => {
       const it = state.items.find((x) => x.key === key);
       const clip = clipToSend(it);
       const clipActive = clip.start != null || clip.end != null;
-      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, file: null, checked: false, clipActive, dlSel: it.sel });
+      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, file: null, checked: false, clipActive, dlSel: it.sel, alreadyHad: false });
       renderRow(it);
     }
     updateCounts();
