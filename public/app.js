@@ -145,7 +145,8 @@ $('#inputForm').addEventListener('submit', async (e) => {
     state.items.push(...newItems);
     newItems.forEach(renderRow);
     updateCounts();
-    showMessage(r.warning || `Agregadas ${newItems.length} canción(es) de "${r.name}".`, r.warning ? 'warn' : '');
+    const dupes = r.removed ? ` Se omitieron ${r.removed} repetida(s).` : '';
+    showMessage(r.warning || `Agregadas ${newItems.length} canción(es) de "${r.name}".${dupes}`, r.warning ? 'warn' : '');
     e.target.reset();
     // Busca en YouTube las que vienen de Spotify / nombre+artista
     const toSearch = newItems.filter((it) => !it.candidates);
@@ -181,6 +182,7 @@ function renderRow(it) {
     $('.sel', it.el).addEventListener('change', (e) => { it.checked = e.target.checked; updateCounts(); });
     $('.cand', it.el).addEventListener('change', (e) => { it.sel = Number(e.target.value); renderRow(it); });
     bindClip(it);
+    $('.clip-play', it.el).addEventListener('click', () => togglePlay(it));
   }
   const el = it.el;
   const c = it.candidates?.[it.sel];
@@ -338,11 +340,79 @@ function renderClip(it) {
     r1.style.zIndex = clip.start > d * 0.9 ? 2 : 1;
   }
 
+  const play = $('.clip-play', el);
+  const downloaded = hasDownloadedFile(it);
+  play.title = play.ariaLabel = player.item === it
+    ? 'Detener'
+    : downloaded ? 'Reproducir la parte descargada' : 'Escuchar el fragmento seleccionado';
+
   const trimmed = clip.start > 0 || (clip.end != null && (d == null || clip.end < d));
   box.classList.toggle('trimmed', trimmed);
   const busy = BUSY.includes(it.status);
   for (const i of [cs, ce, r1, r2, $('.clip-reset', el)]) i.disabled = busy;
 }
+
+// ---------- Reproducción del fragmento ----------
+const player = { audio: new Audio(), item: null, end: null };
+
+/** El archivo descargado corresponde al video elegido ahora (si se cambió de video, ya no). */
+const hasDownloadedFile = (it) => it.status === 'done' && it.file && it.dlSel === it.sel;
+
+function setPlayIcon(it, mode) { // mode: 'idle' | 'loading' | 'playing'
+  if (!it?.el) return;
+  const b = $('.clip-play', it.el);
+  b.textContent = mode === 'idle' ? '▶' : '■';
+  b.classList.toggle('playing', mode === 'playing');
+  b.classList.toggle('loading', mode === 'loading');
+  renderClip(it);
+}
+
+function stopPlayer() {
+  const it = player.item;
+  player.item = null;
+  player.audio.pause();
+  player.audio.removeAttribute('src');
+  player.audio.load();
+  setPlayIcon(it, 'idle');
+}
+
+function togglePlay(it) {
+  const same = player.item === it;
+  stopPlayer();
+  if (same) return;
+  const a = player.audio;
+  player.item = it;
+  if (hasDownloadedFile(it)) {
+    // El archivo ya es el fragmento descargado: se reproduce entero.
+    player.end = null;
+    a.src = `/api/file?path=${encodeURIComponent(it.file)}`;
+  } else {
+    // Escucha previa del fragmento elegido directamente desde YouTube.
+    const c = it.candidates[it.sel];
+    const { start, end } = getClip(it);
+    player.end = end;
+    a.src = `/api/preview/${encodeURIComponent(c.id)}#t=${start}`;
+  }
+  setPlayIcon(it, 'loading');
+  a.play().catch((err) => {
+    if (player.item !== it) return; // se detuvo antes de empezar
+    stopPlayer();
+    if (err.name !== 'AbortError') showMessage(`No se pudo reproducir "${it.title}".`, 'error');
+  });
+}
+
+player.audio.addEventListener('playing', () => setPlayIcon(player.item, 'playing'));
+player.audio.addEventListener('waiting', () => setPlayIcon(player.item, 'loading'));
+player.audio.addEventListener('timeupdate', () => {
+  if (player.end != null && player.audio.currentTime >= player.end) stopPlayer();
+});
+player.audio.addEventListener('ended', stopPlayer);
+player.audio.addEventListener('error', () => {
+  const it = player.item;
+  if (!it) return;
+  stopPlayer();
+  showMessage(`No se pudo reproducir "${it.title}".`, 'error');
+});
 
 function selectedItems() {
   return state.items.filter((it) => it.checked && it.candidates?.[it.sel]);
@@ -366,6 +436,7 @@ $('#checkAll').addEventListener('change', (e) => {
 });
 
 $('#clearBtn').addEventListener('click', () => {
+  stopPlayer();
   state.items = state.items.filter((it) => ['queued', 'downloading', 'converting'].includes(it.status));
   $('#list').innerHTML = '';
   state.items.forEach((it) => { it.el = null; renderRow(it); });
@@ -423,7 +494,7 @@ $('#downloadBtn').addEventListener('click', async () => {
       const it = state.items.find((x) => x.key === key);
       const clip = clipToSend(it);
       const clipActive = clip.start != null || clip.end != null;
-      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, checked: false, clipActive });
+      Object.assign(it, { jobId, status: 'queued', percent: 0, error: null, file: null, checked: false, clipActive, dlSel: it.sel });
       renderRow(it);
     }
     updateCounts();
